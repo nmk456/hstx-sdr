@@ -1,0 +1,15 @@
+{
+    "configurations": [
+        {
+            "name": "pico",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${env:PICO_SDK_PATH}/**"
+            ],
+            "intelliSenseMode": "gcc-arm",
+            "cStandard": "c11",
+            "configurationProvider": "ms-vscode.makefile-tools"
+        }
+    ],
+    "version": 4
+}
