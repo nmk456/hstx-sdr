@@ -28,6 +28,7 @@ add_custom_target(reset
 
 add_executable(application
     src/main.c
+    src/inv_modulator.c
 )
 
 pico_enable_stdio_usb(application 0)
@@ -35,6 +36,8 @@ pico_enable_stdio_uart(application 0)
 
 target_link_libraries(application
     pico_stdlib
+    hardware_dma
+    hardware_pio
     hardware_structs
 )
 
@@ -46,3 +49,4 @@ target_compile_options(application PUBLIC
 )
 
 pico_add_extra_outputs(application)
+pico_generate_pio_header(application ${PROJECT_SOURCE_DIR}/src/inv_modulator.pio)

@@ -1,0 +1,14 @@
+.pio_version 1
+
+.program inv_modulator
+
+.fifo txrx
+.clock_div 1
+.in 8 left 8
+.out 1 left auto 1
+
+.wrap_target
+    // TODO: test if this stalls correctly with autopush instead
+    out isr, 1
+    push
+.wrap
