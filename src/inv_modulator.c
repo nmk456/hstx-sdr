@@ -19,15 +19,10 @@ void inv_mod_setup(int rf_pin, PIO pio, bool enable_dpsk) {
     gpio_set_dir(rf_pin, true);
 
     //// HSTX setup
-    // Configure pin for DDR, send bit 0 then bit 1
-    hstx_ctrl_hw->bit[rf_pin - FIRST_HSTX_PIN] =
-        (0u << HSTX_CTRL_BIT0_SEL_P_LSB) |
-        (1u << HSTX_CTRL_BIT0_SEL_N_LSB);
+    // Configure pin for clock output
+    hstx_ctrl_hw->bit[rf_pin - FIRST_HSTX_PIN] = HSTX_CTRL_BIT0_CLK_BITS;
 
-    // Set to transmit forever
-    hstx_fifo_hw->fifo = (0x1 << 12) | 0x0;  // RAW_REPEAT, len 0 (infinite)
-    hstx_fifo_hw->fifo = 0b01;
-    // hstx_ctrl_hw->csr = ;  // TODO: figure out shift params
+    // Leave HSTX CSR at defaults
 
     // PIO setup
     sm = pio_claim_unused_sm(pio, true);
