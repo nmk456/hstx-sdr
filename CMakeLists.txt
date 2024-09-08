@@ -17,12 +17,12 @@ include_directories(
 
 # Upload code
 install(CODE "execute_process(
-    COMMAND openocd -f interface/cmsis-dap.cfg -f target/rp2040.cfg -c \"adapter speed 5000; program application.elf verify reset exit\"
+    COMMAND openocd -f interface/cmsis-dap.cfg -f target/rp2350.cfg -c \"adapter speed 5000; program application.elf verify reset exit\"
 )")
 
 # Reset RP2040 without programming
 add_custom_target(reset
-    COMMAND openocd -f interface/cmsis-dap.cfg -f target/rp2040.cfg -c \"init\; reset halt\; rp2040.core1 arp_reset assert 0\; rp2040.core0 arp_reset assert 0\; exit\"
+    COMMAND openocd -f interface/cmsis-dap.cfg -f target/rp2350.cfg -c \"init\; reset halt\; rp2350.core1 arp_reset assert 0\; rp2350.core0 arp_reset assert 0\; exit\"
     COMMENT "Resetting"
 )
 
