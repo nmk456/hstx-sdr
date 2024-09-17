@@ -3,7 +3,7 @@
 #include "hardware/pio.h"
 #include "pico/stdlib.h"
 
-void inv_mod_setup(int rf_pin, PIO pio, bool enable_dpsk);
+void inv_mod_setup(int rf_pin, PIO pio);
 
 // Sets datarate to clk_hstx / divider
 void inv_mod_datarate(int divider);
