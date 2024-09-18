@@ -11,13 +11,17 @@
 #define FIRST_HSTX_PIN 12
 
 static int sm;
+static PIO pio;
 static int dma_chan1, dma_chan2, dma_chan3;
 static int dma_timer;
-static int dma_timer_divider = 1024;
+
+// Data rate is sys_clk/divider
+static int dma_timer_divider = 256;
 
 static int dummy_hstx_data = 0x69696969;
+static uint8_t sync_word[] = {0x6B, 0xBE};
 
-void inv_mod_setup(int rf_pin, PIO pio) {
+void inv_mod_setup(int rf_pin, PIO _pio) {
     // GPIO setup
     gpio_init(rf_pin);
     gpio_set_dir(rf_pin, GPIO_OUT);
@@ -28,10 +32,12 @@ void inv_mod_setup(int rf_pin, PIO pio) {
     //// HSTX setup
     // Configure pin for clock output
     hstx_ctrl_hw->bit[rf_pin - FIRST_HSTX_PIN] = HSTX_CTRL_BIT0_CLK_BITS;
+    hw_clear_bits(&hstx_ctrl_hw->csr, HSTX_CTRL_CSR_N_SHIFTS_BITS);
 
     // Leave HSTX CSR at defaults
 
     //// PIO setup
+    pio = _pio;
     sm = pio_claim_unused_sm(pio, true);
     uint offset = pio_add_program(pio, &inv_modulator_program);
     pio_sm_config pio_config = inv_modulator_program_get_default_config(offset);
@@ -66,7 +72,7 @@ void inv_mod_setup(int rf_pin, PIO pio) {
     dma_timer = dma_claim_unused_timer(true);
     channel_config_set_dreq(&dma_config2, dma_get_timer_dreq(dma_timer));
 
-    // Pacing timer - 150/1024 = 146.48 kbps default
+    // Pacing timer - 150/256 = 585.9 kbps default
     dma_timer_set_fraction(dma_timer, 1, dma_timer_divider);
 
     volatile void *pin_inv_addr = hw_xor_alias(((uint8_t*) &hstx_ctrl_hw->bit[rf_pin - FIRST_HSTX_PIN]) + 2);
@@ -88,6 +94,7 @@ void inv_mod_setup(int rf_pin, PIO pio) {
     channel_config_set_transfer_data_size(&dma_config3, DMA_SIZE_32);
     channel_config_set_read_increment(&dma_config3, false);
     channel_config_set_write_increment(&dma_config3, false);
+    channel_config_set_dreq(&dma_config3, DREQ_HSTX);
 
     dma_channel_configure(
         dma_chan3,
@@ -107,7 +114,10 @@ void inv_mod_datarate(int divider) {
 }
 
 void inv_mod_transmit(uint8_t *buf, uint len) {
-    // TODO: Sync words/bits
+    // Make sure last transmission is finished and PIO is back to a known state
+    while (inv_mod_busy());
+    pio_sm_restart(pio, sm);
+    pio_sm_clear_fifos(pio, sm);
 
     // Set read address, length, then start transfer
     dma_channel_set_read_addr(dma_chan1, buf, false);
@@ -116,7 +126,22 @@ void inv_mod_transmit(uint8_t *buf, uint len) {
     // Number of transfers = (number of bits + 1) * cycles per symbol / 32.
     // We are doing one bit extra because the last bit will otherwise get cut off unless
     // the pacing timer is exactly synchronized with transfer start (unlikely).
-    dma_channel_set_trans_count(dma_chan3, (len * 8 + 1) * dma_timer_divider / 32, false);
+    dma_channel_set_trans_count(dma_chan3, ((len + 4) * 8 + 1) * dma_timer_divider / 32, false);
+
+    // The PIO FIFO is 4 words deep so we have space to insert a 16 bit
+    // preamble and 16 bit sync word before starting. The first word will be
+    // pulled into the OSR so we have 5 words total to work with.
+
+    // Send just carrier
+    pio_sm_put_blocking(pio, sm, 0x00);
+
+    // 16 bit preamble, repeating 01s after differential encoding
+    pio_sm_put_blocking(pio, sm, 0xFF);
+    pio_sm_put_blocking(pio, sm, 0xFF);
+
+    // Sync word
+    pio_sm_put_blocking(pio, sm, sync_word[0]);
+    pio_sm_put_blocking(pio, sm, sync_word[1]);
 
     // Start the DMA transfers simultaneously
     dma_start_channel_mask((1u << dma_chan1) | (1u << dma_chan3));
@@ -134,12 +159,18 @@ void inv_mod_enable(bool en) {
         hw_clear_bits(&hstx_ctrl_hw->csr, HSTX_CTRL_CSR_EN_BITS);
 
         // Disable DMA
+        dma_channel_abort(dma_chan1);
         dma_channel_abort(dma_chan2);
+        dma_channel_abort(dma_chan3);
+
+        // Reset PIO state
+        pio_sm_restart(pio, sm);
+        pio_sm_clear_fifos(pio, sm);
     }
 }
 
 int inv_mod_busy() {
-    if (dma_channel_is_busy(dma_chan1) || dma_channel_is_busy(dma_chan2)) {
+    if (dma_channel_is_busy(dma_chan1) || dma_channel_is_busy(dma_chan3) || !pio_sm_is_rx_fifo_empty(pio, sm)) {
         return 1;
     }
 
